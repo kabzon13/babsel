@@ -1,112 +1,75 @@
 const fs = require('fs');
 const _ = require('lodash');
+const nodes = require('./nodes');
 
 let i = 0;
 fs.writeFileSync('path.json', '');
 
-const ATTR = 'yo';
-const ATTR_VALUE = 'man';
-
 const babsel = {
-    NODE_NAMES: {
-        Button: {
-            is () {
-                return this.t.isJSXIdentifier(this.path.node, { name: 'Button' });
-            },
-            shouldAddAttr () {
-                return this.t.isJSXOpeningElement(this.path.container);
-            },
-            addAttr () {
-                this.path.container.attributes.push(
-                    this.t.jSXAttribute(this.t.jSXIdentifier(ATTR), this.t.stringLiteral(ATTR_VALUE))
-                );
-            }
-        },
+  NODE_NAMES: nodes,
 
-        Text: {
-            is () {
-                return this.t.isJSXText(this.path.node);
-            },
-            shouldAddAttr () {
-                const textValue = _.get(this.path, 'node.value', '').trim();
+  init(path, t) {
+    this.path = path;
+    this.t = t;
+    this.nodeName = this.getNodeName();
+  },
 
-                return !_.isEmpty(textValue) &&
-                    (!this.path.parent.openingElement.attributes.length ||
-                    this.path.parent.openingElement.attributes[0].name.name !== ATTR);
-            },
-            addAttr () {
-                const attr = this.t.jSXAttribute(this.t.jSXIdentifier(ATTR), this.t.stringLiteral(ATTR_VALUE));
+  clear() {
+    this.nodeName = this.t = this.path = null;
+  },
 
-                this.path.parent.openingElement.attributes.push(attr);
-            }
-        }
-    },
+  handlePath(path, t) {
+    this.init(path, t);
 
-    init(path, t) {
-        this.path = path;
-        this.t = t;
-        this.nodeName = this.getNodeName();
-    },
-
-    clear() {
-        this.nodeName = this.t  = this.path = null;
-    },
-
-    handlePath(path, t) {
-        this.init(path, t);
-
-        if (!this.NODE_NAMES[this.nodeName]) {
-            this.clear();
-            return;
-        }
-
-        if (this.shouldAddAttr()) {
-            console.log('\n-------------------\n')
-            console.log(this.nodeName)
-            console.log('\n-------------------\n')
-            this.addAttr();
-        }
-    },
-
-    shouldAddAttr() {
-        return this.NODE_NAMES[this.nodeName].shouldAddAttr.call(this);
-    },
-
-    getNodeName() {
-        return _.findKey(this.NODE_NAMES, (node) => {
-            return node.is.call(this, this.path);
-        });
-    },
-
-    addAttr () {
-        this.NODE_NAMES[this.nodeName].addAttr.call(this);
+    if (!this.NODE_NAMES[this.nodeName]) {
+      this.clear();
+      return;
     }
+
+    if (this.shouldAddAttr()) {
+      this.addAttrs();
+    }
+  },
+
+  shouldAddAttr() {
+    return this.NODE_NAMES[this.nodeName].shouldAddAttr.call(this);
+  },
+
+  getNodeName() {
+      return _.findKey(this.NODE_NAMES, node => node.is.call(this, this.path));
+  },
+
+  addAttrs() {
+    //this.NODE_NAMES[this.nodeName].addSeleniumAttr.call(this);
+    this.NODE_NAMES[this.nodeName].addAttr.call(this);
+  },
 };
 
-module.exports = function({ types: t }) {
-    return {
-        pre() {
-            this.result = {};
-        },
-        visitor: {
-            JSX(path) {
-                i++;
-                this.result[`${i}__${path.node.type}__${path.node.name}`] = path.node;
-            },
+module.exports = ({ types: t }) => ({
+  pre(file) {
+    this.result = {};
 
-            JSXIdentifier(path) {
-                babsel.handlePath(path, t);
-            },
-            JSXText(path) {
-                babsel.handlePath(path, t);
-            }
-        },
-        post() {
-            if (!Object.keys(this.result).length) return;
+    this.result.fileName = file.log.filename;
+  },
+  visitor: {
+    JSX(path) {
+      this.result[`${path.node.type}_${++i}`] = path.node.name;
+    },
 
-            fs.appendFileSync('path.json', '\n\n\n\n' + JSON.stringify(this.result) + '\n\n\n\n');
-        },
-    };
-};
+    JSXIdentifier(path) {
+      // console.log('\n-------------------\n')
+      babsel.handlePath(path, t);
+    },
+    JSXOpeningElement(path) {
+      this.result[`${path.node.type}_${++i}`] = _.get(path, 'node.name.name');
+    },
+    JSXText(path) {
+      babsel.handlePath(path, t);
+    },
+  },
+  post() {
+    if (!Object.keys(this.result).length) return;
 
-
+    fs.appendFileSync('path.json', '\n\n\n\n' + JSON.stringify(this.result) + '\n\n\n\n');
+  },
+});
